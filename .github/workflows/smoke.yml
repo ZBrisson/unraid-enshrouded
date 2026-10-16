@@ -29,7 +29,7 @@ jobs:
       build: ${{ steps.build.outputs.build }}
       images: ${{ steps.b.outputs.images }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: build
         run: echo "build=$(tests/steam_buildid.sh)" >> "$GITHUB_OUTPUT"
       - id: b
@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Smoke test
         env:
           IMAGE: ${{ matrix.image }}
