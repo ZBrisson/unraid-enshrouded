@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>enshrouded</Name>
+  <Repository>mornedhels/enshrouded-server:stable-proton</Repository>
+  <Registry>https://hub.docker.com/r/mornedhels/enshrouded-server</Registry>
+  <Branch>
+    <Tag>stable-proton</Tag>
+    <TagDescription>Proton GE (upstream default). Pick this unless the server misbehaves.</TagDescription>
+  </Branch>
+  <Branch>
+    <Tag>stable-wine</Tag>
+    <TagDescription>Plain Wine. Fallback if a Proton release breaks the server.</TagDescription>
+  </Branch>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Icon>https://raw.githubusercontent.com/ZBrisson/unraid-enshrouded/main/icon.png</Icon>
+  <Support>https://github.com/ZBrisson/unraid-enshrouded/issues</Support>
+  <Project>https://github.com/mornedhels/enshrouded-server</Project>
+  <TemplateURL>https://raw.githubusercontent.com/ZBrisson/unraid-enshrouded/main/my-enshrouded.xml</TemplateURL>
+  <Overview>Enshrouded dedicated server (mornedhels/enshrouded-server). Updates the game on a schedule but only while nobody is online, zips the world to the backup share every 6 hours, and restarts daily at 05:00 when empty. Access is by server role: set the Admin and Friends passwords before the first start.</Overview>
+  <Category>GameServers:</Category>
+  <Requires>Forward UDP 15637 on your router to this server. Keep appdata on an SSD pool: the game is several GB and an update briefly needs twice that. Plan on 16 GB RAM and 4+ cores for the server alone. The first start downloads the game and takes a while; watch the log.</Requires>
+  <WebUI/>
+  <ExtraParams>--stop-timeout=90 --memory=16g --security-opt=no-new-privileges=true --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=SETUID --cap-add=SETGID --cap-add=KILL</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Changes>
+### 2026-10-16
+- First version.
+  </Changes>
+  <Config Name="Query port" Target="15637" Default="15637" Mode="udp" Description="Steam query port. Keep host and container port the same and equal to SERVER_QUERYPORT: the server advertises this number." Type="Port" Display="always" Required="true" Mask="false">15637</Config>
+  <Config Name="Server data" Target="/opt/enshrouded" Default="/mnt/user/appdata/enshrouded" Mode="rw" Description="Game install, enshrouded_server.json (contains role passwords) and the world save under server/savegame." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/enshrouded</Config>
+  <Config Name="Backups" Target="/backups" Default="/mnt/user/backup/enshrouded" Mode="rw" Description="World backups (zip) written by BACKUP_CRON. Point Duplicati at this folder for off-site copies." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/backup/enshrouded</Config>
+  <Config Name="Server name" Target="SERVER_NAME" Default="Enshrouded Server" Mode="" Description="Name shown in the server browser." Type="Variable" Display="always" Required="true" Mask="false">Enshrouded Server</Config>
+  <Config Name="Player slots" Target="SERVER_SLOT_COUNT" Default="16" Mode="" Description="Maximum players, 1-16." Type="Variable" Display="always" Required="true" Mask="false">16</Config>
+  <Config Name="Admin role password" Target="SERVER_ROLE_0_PASSWORD" Default="" Mode="" Description="Password for the Admin role (kick/ban, inventories, world and base editing, 1 reserved slot)." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Friends role password" Target="SERVER_ROLE_1_PASSWORD" Default="" Mode="" Description="Password for the Friends role (build and edit, no kick/ban). Must differ from the Admin password." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Difficulty preset" Target="SERVER_GS_PRESET" Default="Default|Relaxed|Hard|Survival|Custom" Mode="" Description="Custom enables the SERVER_GS_* fine-tuning variables (add them yourself)." Type="Variable" Display="always" Required="true" Mask="false">Default</Config>
+  <Config Name="Admin role name" Target="SERVER_ROLE_0_NAME" Default="Admin" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">Admin</Config>
+  <Config Name="Admin can kick/ban" Target="SERVER_ROLE_0_CAN_KICK_BAN" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Admin can access inventories" Target="SERVER_ROLE_0_CAN_ACCESS_INVENTORIES" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Admin can edit world" Target="SERVER_ROLE_0_CAN_EDIT_WORLD" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Admin can edit base" Target="SERVER_ROLE_0_CAN_EDIT_BASE" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Admin can extend base" Target="SERVER_ROLE_0_CAN_EXTEND_BASE" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Admin reserved slots" Target="SERVER_ROLE_0_RESERVED_SLOTS" Default="1" Mode="" Description="Slots kept free for this role." Type="Variable" Display="advanced" Required="true" Mask="false">1</Config>
+  <Config Name="Friends role name" Target="SERVER_ROLE_1_NAME" Default="Friends" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">Friends</Config>
+  <Config Name="Friends can kick/ban" Target="SERVER_ROLE_1_CAN_KICK_BAN" Default="false|true" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+  <Config Name="Friends can access inventories" Target="SERVER_ROLE_1_CAN_ACCESS_INVENTORIES" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Friends can edit world" Target="SERVER_ROLE_1_CAN_EDIT_WORLD" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Friends can edit base" Target="SERVER_ROLE_1_CAN_EDIT_BASE" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Friends can extend base" Target="SERVER_ROLE_1_CAN_EXTEND_BASE" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Friends reserved slots" Target="SERVER_ROLE_1_RESERVED_SLOTS" Default="0" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">0</Config>
+  <Config Name="Enable voice chat" Target="SERVER_ENABLE_VOICE_CHAT" Default="false|true" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+  <Config Name="Voice chat mode" Target="SERVER_VOICE_CHAT_MODE" Default="Proximity|Global" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">Proximity</Config>
+  <Config Name="Enable text chat" Target="SERVER_ENABLE_TEXT_CHAT" Default="false|true" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
+  <Config Name="Query port (server config)" Target="SERVER_QUERYPORT" Default="15637" Mode="" Description="Must equal the Query port above." Type="Variable" Display="advanced" Required="true" Mask="false">15637</Config>
+  <Config Name="Update check schedule" Target="UPDATE_CRON" Default="*/30 * * * *" Mode="" Description="Cron schedule for checking Steam for a game update." Type="Variable" Display="advanced" Required="false" Mask="false">*/30 * * * *</Config>
+  <Config Name="Only update when empty" Target="UPDATE_CHECK_PLAYERS" Default="true|false" Mode="" Description="Skip an update while players are online; the next check retries." Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Backup schedule" Target="BACKUP_CRON" Default="0 */6 * * *" Mode="" Description="Cron schedule for world backups (no more often than every 10 minutes)." Type="Variable" Display="advanced" Required="false" Mask="false">0 */6 * * *</Config>
+  <Config Name="Backup directory (container)" Target="BACKUP_DIR" Default="/backups" Mode="" Description="Must equal the Backups container path." Type="Variable" Display="advanced" Required="true" Mask="false">/backups</Config>
+  <Config Name="Backups to keep" Target="BACKUP_MAX_COUNT" Default="28" Mode="" Description="28 = 7 days at the default schedule. 0 keeps everything." Type="Variable" Display="advanced" Required="true" Mask="false">28</Config>
+  <Config Name="Restart schedule" Target="RESTART_CRON" Default="0 5 * * *" Mode="" Description="Daily restart. Uses the container clock; see README about TZ." Type="Variable" Display="advanced" Required="false" Mask="false">0 5 * * *</Config>
+  <Config Name="Only restart when empty" Target="RESTART_CHECK_PLAYERS" Default="true|false" Mode="" Description="" Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Steam branch" Target="GAME_BRANCH" Default="public" Mode="" Description="Steam beta branch to install." Type="Variable" Display="advanced" Required="true" Mask="false">public</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Unraid nobody." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Unraid users." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+</Container>

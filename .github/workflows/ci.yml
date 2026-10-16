@@ -1,0 +1,75 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1" # weekly: catch upstream image and Steam changes
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pyflakes
+      - run: sudo apt-get install -y --no-install-recommends libxml2-utils
+      - name: XML is well-formed
+        run: xmllint --noout my-enshrouded.xml
+      - name: Unraid template rules
+        run: python tools/template.py validate my-enshrouded.xml
+      - run: python -m pyflakes tools/ tests/
+      - run: python -m pytest -q tests/
+      - run: shellcheck tests/*.sh
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
+
+  image:
+    # Every tag the template offers must exist, and every variable the template sets must be
+    # read somewhere in that image's scripts (catches upstream renames).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [stable-proton, stable-wine] # keep in sync with <Branch>; a test checks the template side
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull
+        run: |
+          image="$(python3 tools/template.py get my-enshrouded.xml Repository)"
+          image="${image%:*}:${{ matrix.tag }}"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          docker pull "$image"
+          docker image inspect -f 'built {{.Created}}' "$image"
+      - name: Template variables exist in the image
+        run: |
+          id=$(docker create "$IMAGE")
+          docker cp "$id:/usr/local/etc/enshrouded" scripts
+          docker rm "$id"
+          python3 tools/template.py envcheck my-enshrouded.xml scripts
+
+  steam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: GAME_BRANCH exists on Steam
+        run: |
+          build=$(tests/steam_buildid.sh)
+          echo "Steam build: $build" >> "$GITHUB_STEP_SUMMARY"
+
+  template-urls:
+    # The URLs Unraid fetches must resolve once the template is on main.
+    if: github.event_name != 'pull_request'
+    needs: static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          for key in TemplateURL Icon; do
+            url=$(python3 tools/template.py get my-enshrouded.xml "$key")
+            curl -fsSIL --retry 3 "$url" >/dev/null && echo "$key ok: $url"
+          done

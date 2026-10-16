@@ -1,0 +1,62 @@
+name: smoke
+# Boots the real server from the template (~30-45 min: downloads the game, starts it twice).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag
+        type: choice
+        options: [stable-proton, stable-wine]
+        default: stable-proton
+  schedule:
+    - cron: "41 7 * * 1" # weekly, after ci
+  pull_request:
+    paths:
+      - my-enshrouded.xml
+      - tools/**
+      - tests/smoke.sh
+      - tests/check_config.py
+      - tests/steam_buildid.sh
+      - .github/workflows/smoke.yml
+permissions:
+  contents: read
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  steam:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.build.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: build
+        run: echo "build=$(tests/steam_buildid.sh)" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    needs: steam
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(inputs.tag && format('["{0}"]', inputs.tag) || '["stable-proton","stable-wine"]') }}
+    steps:
+      - name: Free disk space for the game install
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@v4
+      - name: Smoke test
+        env:
+          TAG: ${{ matrix.tag }}
+          EXPECTED_BUILD: ${{ needs.steam.outputs.build }}
+          WORK: ${{ runner.temp }}/smoke
+        run: tests/smoke.sh
+      - name: Collect logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.tag }}
+          path: ${{ runner.temp }}/smoke/logs
+          if-no-files-found: ignore
