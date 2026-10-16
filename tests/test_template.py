@@ -29,11 +29,23 @@ def test_unraid_template_is_valid(t):
     assert tpl.validate(t) == []
 
 
-def test_upstream_image_and_stable_tags(t):
-    image, tag = t.fields["Repository"].split(":")
-    assert image == "mornedhels/enshrouded-server"
-    assert tag.startswith("stable-")
-    assert set(t.branches) == {"stable-proton", "stable-wine"}
+RELEASE_TAG = re.compile(r"(stable-(proton|wine)|\d+\.\d+\.\d+-(proton|wine))")
+
+
+def test_upstream_image_and_tag_policy(t):
+    images = tpl.branch_images(t)
+    assert {tpl.split_image(i["image"])[0] for i in images} == {"mornedhels/enshrouded-server"}
+    # Release tags may float; anything else (dev-*) moves on every upstream push, so pin it.
+    for i in images:
+        _, tag, digest = tpl.split_image(i["image"])
+        assert RELEASE_TAG.fullmatch(tag) or digest, f"{i['image']}: pin non-release tags by digest"
+    assert sorted(i["name"].rsplit("-", 1)[-1] for i in images) == ["proton", "wine"]
+
+
+def test_split_image():
+    assert tpl.split_image("a/b:dev@sha256:00") == ("a/b", "dev", "sha256:00")
+    assert tpl.split_image("a/b:stable-wine") == ("a/b", "stable-wine", "")
+    assert tpl.split_image("reg:5000/a/b") == ("reg:5000/a/b", "", "")
 
 
 # The image feeds these to `jq --argjson`. An empty or non-JSON value makes jq fail and the
@@ -151,7 +163,8 @@ def test_render_rejects_unknown_override(t):
 
 def test_validator_catches_known_mistakes(tmp_path):
     bad = TEMPLATE.read_text()
-    bad = bad.replace(":stable-proton</Repository>", ":latest</Repository>")
+    bad = re.sub(r"(<Repository>[^:<]+):[^<]+</Repository>", r"\1:latest</Repository>", bad)
+    bad = re.sub(r"(<Tag>dev-wine@sha256:)[0-9a-f]+", r"\1nothex", bad)
     bad = bad.replace('Target="SERVER_ENABLE_TEXT_CHAT" Default="false|true" Mode="" Description="" Type="Variable" '
                       'Display="advanced" Required="true" Mask="false">false<',
                       'Target="SERVER_ENABLE_TEXT_CHAT" Default="false|true" Mode="" Description="" Type="Variable" '
@@ -162,6 +175,7 @@ def test_validator_catches_known_mistakes(tmp_path):
     (tmp_path / "icon.png").write_bytes(b"")
     problems = "\n".join(tpl.validate(tpl.Template(f)))
     assert "explicit tag" in problems
+    assert "sha256:<64 hex>" in problems
     assert "dropdown" in problems
     assert "/mnt/user/" in problems
 

@@ -4,13 +4,15 @@
 
 An Unraid template for an **Enshrouded** dedicated server, built on [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server). The image is used as-is; this repo adds Unraid defaults and CI that checks the template against the image, Steam and a real server boot.
 
+> **Current pin (2026-10-16):** upstream's `stable` 1.7.2 can't start Enshrouded 1.0 (Steamworks *Version Mismatch*, [#254](https://github.com/mornedhels/enshrouded-server/issues/254)) and its backup script skips 1.0's `world0.ksd` saves ([#256](https://github.com/mornedhels/enshrouded-server/pull/256)). The template pins upstream's `dev-proton`/`dev-wine` builds of 2026-10-15 **by digest**. CI's `upstream-release` job fails when a newer release appears; then test the stable tags and switch back. Because of the digest pin, Unraid's "update available" check won't offer image updates; new images arrive through this repo.
+
 Why this image: it updates the game on a schedule but skips the update while anyone is online, writes zip backups of the world with retention, restarts on a schedule, and maps every `enshrouded_server.json` setting (including server roles) to an environment variable.
 
 ## What the template sets
 
 | | Value | Why |
 |---|---|---|
-| Image | `mornedhels/enshrouded-server:stable-proton` (or `stable-wine`, picked at install) | `stable-*` only moves on upstream releases |
+| Image | `mornedhels/enshrouded-server:dev-proton@sha256:…` (or `dev-wine@…`, picked at install) | pinned by digest; see the note above |
 | Port | `15637/udp`, same on host and container | the server advertises its query port |
 | `/opt/enshrouded` | `/mnt/user/appdata/enshrouded` | game, config (role passwords) and world save |
 | `/backups` | `/mnt/user/backup/enshrouded` | world zips, off the cache pool |
@@ -36,19 +38,15 @@ Then **Docker → Add Container → Template: enshrouded**, set the two role pas
 
 Forward **UDP 15637** on the router. The first start downloads the game; follow it with `docker logs -f enshrouded` until the server is listed.
 
-### ntsync (optional, faster Wine/Proton)
+After the first start, the image restarts the server once at the next update check (`:00` or `:30`). It couldn't record the installed version on the first run, so it re-validates the install once to record it.
 
-Enshrouded can use the kernel's `ntsync` driver (kernel 6.14+; Unraid's is newer). Check whether Unraid ships it:
+### ntsync
 
-```bash
-modprobe ntsync && ls -l /dev/ntsync
-```
-
-If that works, load it at boot (`echo 'modprobe ntsync' >> /boot/config/go`) and add `--device=/dev/ntsync` to **Extra Parameters**. Don't add the device without the module: the container won't start.
+Not available: Unraid 6.18.38 doesn't ship the `ntsync` module (`modprobe ntsync` → *Module ntsync not found*). Proton falls back to fsync (`fsync: up and running` in the log). If a later Unraid ships it, check `modprobe ntsync && ls -l /dev/ntsync`, load it from `/boot/config/go` and add `--device=/dev/ntsync` to **Extra Parameters**.
 
 ### Time zone
 
-Unraid passes `TZ` to every container. The cron schedules use the container's clock, and if the image lacks time zone data they run in UTC (05:00 UTC is 01:00 in New York). The smoke test reports which applies, and `docker exec enshrouded date` shows it on the server.
+Unraid passes `TZ` to every container, and the image honours it: the log's timestamps are local time, so `RESTART_CRON=0 5 * * *` means 05:00 local. The smoke test checks this too.
 
 ## Backups and your other backup jobs
 

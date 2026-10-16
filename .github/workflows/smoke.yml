@@ -3,11 +3,10 @@ name: smoke
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: Image tag
-        type: choice
-        options: [stable-proton, stable-wine]
-        default: stable-proton
+      only:
+        description: Run only this variant (e.g. dev-proton); empty runs every <Branch> in the template
+        required: false
+        default: ""
   schedule:
     - cron: "41 7 * * 1" # weekly, after ci
   pull_request:
@@ -28,10 +27,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.build.outputs.build }}
+      images: ${{ steps.b.outputs.images }}
     steps:
       - uses: actions/checkout@v4
       - id: build
         run: echo "build=$(tests/steam_buildid.sh)" >> "$GITHUB_OUTPUT"
+      - id: b
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          images=$(python3 tools/template.py branches my-enshrouded.xml \
+            | jq -c --arg only "$ONLY" 'map(select($only == "" or .name == $only))')
+          echo "images=$images" >> "$GITHUB_OUTPUT"
 
   smoke:
     needs: steam
@@ -40,7 +47,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tag: ${{ fromJSON(inputs.tag && format('["{0}"]', inputs.tag) || '["stable-proton","stable-wine"]') }}
+        include: ${{ fromJSON(needs.steam.outputs.images) }}
+    name: smoke (${{ matrix.name }})
     steps:
       - name: Free disk space for the game install
         run: |
@@ -49,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Smoke test
         env:
-          TAG: ${{ matrix.tag }}
+          IMAGE: ${{ matrix.image }}
           EXPECTED_BUILD: ${{ needs.steam.outputs.build }}
           WORK: ${{ runner.temp }}/smoke
         run: tests/smoke.sh
@@ -57,6 +65,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-${{ matrix.tag }}
+          name: smoke-${{ matrix.name }}
           path: ${{ runner.temp }}/smoke/logs
           if-no-files-found: ignore
