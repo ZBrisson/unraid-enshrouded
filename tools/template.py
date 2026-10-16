@@ -4,6 +4,8 @@
   template.py validate my-enshrouded.xml
   template.py render   my-enshrouded.xml [--set TARGET=VALUE ...] [--format shell|lines]
   template.py envcheck my-enshrouded.xml <dir with the image's scripts>
+  template.py branches my-enshrouded.xml        (JSON, for the CI matrix)
+  template.py get      my-enshrouded.xml KEY
 
 Rendering mirrors xmlToCommand() in unraid/webgui
 (emhttp/plugins/dynamix.docker.manager/include/Helpers.php):
@@ -14,6 +16,7 @@ Rendering mirrors xmlToCommand() in unraid/webgui
   - --pids-limit 2048 is added unless ExtraParams sets one.
 """
 import argparse
+import json
 import re
 import shlex
 import sys
@@ -53,6 +56,22 @@ class Template:
         return shlex.split(self.fields.get("ExtraParams", ""))
 
 
+def split_image(ref):
+    """'repo/name:tag@sha256:...' -> ('repo/name', 'tag', 'sha256:...'); missing parts are ''."""
+    name, _, digest = ref.partition("@")
+    tag = ""
+    if ":" in name.rsplit("/", 1)[-1]:
+        name, tag = name.rsplit(":", 1)
+    return name, tag, digest
+
+
+def branch_images(t):
+    """Every image the template offers: its <Branch> tags, or just <Repository>."""
+    name = split_image(t.fields["Repository"])[0]
+    tags = t.branches or [t.fields["Repository"].split(name + ":", 1)[1]]
+    return [{"name": tag.split("@")[0], "image": f"{name}:{tag}"} for tag in tags]
+
+
 def effective(cfg):
     # PHP strlen(): whitespace counts as a value.
     return cfg["Value"] if len(cfg["Value"]) else cfg.get("Default", "")
@@ -79,11 +98,16 @@ def validate(t):
         err(f"<Name> {name!r} is not a valid container name")
 
     repo = t.fields.get("Repository", "")
-    tag = repo.rsplit(":", 1)[1] if ":" in repo.rsplit("/", 1)[-1] else ""
+    _, tag, digest = split_image(repo)
     if not tag or tag == "latest":
         err(f"<Repository> {repo!r} must name an explicit tag other than latest")
-    if t.branches and tag not in t.branches:
-        err(f"<Repository> tag {tag!r} is not one of the <Branch> tags {t.branches}")
+    full_tag = f"{tag}@{digest}" if digest else tag
+    if t.branches and full_tag not in t.branches:
+        err(f"<Repository> tag {full_tag!r} is not one of the <Branch> tags {t.branches}")
+    for ref in [repo] + [f"x:{b}" for b in t.branches]:
+        d = split_image(ref)[2]
+        if d and not re.fullmatch(r"sha256:[0-9a-f]{64}", d):
+            err(f"digest {d!r} is not sha256:<64 hex>")
     if any(not b for b in t.branches):
         err("<Branch> without a <Tag>")
 
@@ -257,9 +281,14 @@ def main(argv=None):
     g = sub.add_parser("get", help="print a field (e.g. Repository) or a Config's value by Target")
     g.add_argument("template")
     g.add_argument("key")
+    b = sub.add_parser("branches", help="JSON list of {name, image} for every offered tag (CI matrix)")
+    b.add_argument("template")
     a = ap.parse_args(argv)
 
     t = Template(a.template)
+    if a.cmd == "branches":
+        print(json.dumps(branch_images(t)))
+        return 0
     if a.cmd == "get":
         values = {c["Target"]: effective(c) for c in t.configs}
         if a.key not in values and a.key not in t.fields:

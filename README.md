@@ -4,13 +4,15 @@
 
 An Unraid template for an **Enshrouded** dedicated server, built on [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server). The image is used as-is; this repo adds Unraid defaults and CI that checks the template against the image, Steam and a real server boot.
 
+> **Current pin (2026-10-16):** upstream's `stable` 1.7.2 can't start Enshrouded 1.0 (Steamworks *Version Mismatch*, [#254](https://github.com/mornedhels/enshrouded-server/issues/254)) and its backup script skips 1.0's `world0.ksd` saves ([#256](https://github.com/mornedhels/enshrouded-server/pull/256)). The template pins upstream's `dev-proton`/`dev-wine` builds of 2026-10-15 **by digest**. CI's `upstream-release` job fails when a newer release appears; then test the stable tags and switch back. Because of the digest pin, Unraid's "update available" check won't offer image updates; new images arrive through this repo.
+
 Why this image: it updates the game on a schedule but skips the update while anyone is online, writes zip backups of the world with retention, restarts on a schedule, and maps every `enshrouded_server.json` setting (including server roles) to an environment variable.
 
 ## What the template sets
 
 | | Value | Why |
 |---|---|---|
-| Image | `mornedhels/enshrouded-server:stable-proton` (or `stable-wine`, picked at install) | `stable-*` only moves on upstream releases |
+| Image | `mornedhels/enshrouded-server:dev-proton@sha256:…` (or `dev-wine@…`, picked at install) | pinned by digest; see the note above |
 | Port | `15637/udp`, same on host and container | the server advertises its query port |
 | `/opt/enshrouded` | `/mnt/user/appdata/enshrouded` | game, config (role passwords) and world save |
 | `/backups` | `/mnt/user/backup/enshrouded` | world zips, off the cache pool |
@@ -36,19 +38,41 @@ Then **Docker → Add Container → Template: enshrouded**, set the two role pas
 
 Forward **UDP 15637** on the router. The first start downloads the game; follow it with `docker logs -f enshrouded` until the server is listed.
 
-### ntsync (optional, faster Wine/Proton)
+After the first start, the image restarts the server once at the next update check (`:00` or `:30`). It couldn't record the installed version on the first run, so it re-validates the install once to record it.
 
-Enshrouded can use the kernel's `ntsync` driver (kernel 6.14+; Unraid's is newer). Check whether Unraid ships it:
+A healthy start ends with `[online] Server connected to Steam successfully` and `[Session] 'HostOnline' (up)!`. To check which game build is installed, read the `Game Version (SVN)` log line or `buildid` in `server/steamapps/appmanifest_2278520.acf`; the version the server reports to the server browser stays `0.0.15.0`.
+
+### Changing the image on an existing container
+
+**Docker → enshrouded → Edit**, change **Repository** (copy it from the current `my-enshrouded.xml` in this repo), **Apply**. The game files, save and passwords stay. Don't `wget` the template again: after the first Apply, `templates-user/my-enshrouded.xml` holds your passwords and settings, and a fresh copy would wipe them.
+
+### Don't run `enshrouded-force-update` on a running container
+
+It runs `rm -rf server/steamapps`, which also deletes the Proton prefix (`steamapps/compatdata/2278520/pfx`). If the server or the updater is running at the time, the server crash-loops with `wine: chdir to …/pfx : No such file or directory`, and the updater's retry can delete the prefix again. To force a clean re-validate:
 
 ```bash
-modprobe ntsync && ls -l /dev/ntsync
+docker stop enshrouded
+rm -rf /mnt/user/appdata/enshrouded/server/steamapps/compatdata   # Proton prefix only; the save is in server/savegame
+docker start enshrouded
 ```
 
-If that works, load it at boot (`echo 'modprobe ntsync' >> /boot/config/go`) and add `--device=/dev/ntsync` to **Extra Parameters**. Don't add the device without the module: the container won't start.
+On boot the updater logs `Proton files are not available`, verifies the game files (about a minute, no re-download) and starts the server.
+
+### ntsync
+
+Not available: Unraid 7.3.2 (kernel `6.18.38-Unraid`) doesn't ship the `ntsync` module (`modprobe ntsync` → *Module ntsync not found*). Proton falls back to fsync (`fsync: up and running` in the log). If a later Unraid ships it, check `modprobe ntsync && ls -l /dev/ntsync`, load it from `/boot/config/go` and add `--device=/dev/ntsync` to **Extra Parameters**.
 
 ### Time zone
 
-Unraid passes `TZ` to every container. The cron schedules use the container's clock, and if the image lacks time zone data they run in UTC (05:00 UTC is 01:00 in New York). The smoke test reports which applies, and `docker exec enshrouded date` shows it on the server.
+Unraid passes `TZ` to every container, and the image honours it: the log's timestamps are local time, so `RESTART_CRON=0 5 * * *` means 05:00 local. The smoke test checks this too.
+
+## Verified
+
+| Where | Image | Result |
+|---|---|---|
+| Unraid 7.3.2 (kernel 6.18.38, Ryzen 7 3700X, 32 GB), 2026-10-16 | `dev-proton@sha256:d122801b…` | build 25988414 (= steamcmd); `HostOnline`; joined from the game client; backup zip written; container clock EDT; config 99:100 mode 600; idle 82/2048 pids, ~880 MiB |
+| GitHub runner (smoke), 2026-10-16 | `dev-proton`, `dev-wine` (pinned) | server answers on 15637 after 104 s (proton, first start including the 8.1 GB download); config matches the template; `docker stop` in 14 s, exit 0, save written; backup zip contains `world0.ksd` |
+| Unraid, 2026-10-16 | `stable-proton` 1.7.2 | **fails**: restart loop on `Steamworks Version Mismatch / No SteamUtils011` |
 
 ## Backups and your other backup jobs
 
@@ -62,10 +86,11 @@ Unraid passes `TZ` to every container. The cron schedules use the container's cl
 | Workflow | When | Checks |
 |---|---|---|
 | `ci` / static | every push and PR, weekly | XML well-formed; Unraid template rules (`tools/template.py validate`); image-specific rules (`tests/test_template.py`); pyflakes, shellcheck, actionlint |
-| `ci` / image | same | both tags exist and every variable the template sets is read by that image's scripts (catches upstream renames) |
+| `ci` / image | same | every `<Branch>` image pulls, and every variable the template sets is read by that image's scripts (catches upstream renames) |
+| `ci` / upstream-release | same | fails once upstream publishes a release newer than the one the dev pin works around (1.7.2) |
 | `ci` / steam | same | steamcmd logs in anonymously and `GAME_BRANCH` has a build |
 | `ci` / template-urls | pushes to main | `TemplateURL` and `Icon` resolve |
-| `smoke` | PRs touching the template or tests, weekly, manual | boots each tag from the rendered template (same arguments as Unraid, including `--pids-limit 2048`): server answers A2S with the template's name and slots; `enshrouded_server.json` matches the template; files are 99:100; installed build = steamcmd's; `docker stop` finishes inside 90 s with a save; restart reuses the install; a backup zip with the save lands in `/backups` |
+| `smoke` | PRs touching the template or tests, weekly, manual | boots each `<Branch>` image from the rendered template (same arguments as Unraid, including `--pids-limit 2048`): server answers A2S with the template's name and slots; `enshrouded_server.json` matches the template; files are 99:100; installed build = steamcmd's; `docker stop` finishes inside 90 s with a save; restart reuses the install; a backup zip with the save lands in `/backups` |
 
 Some rules come from reading the image's scripts and Unraid's `xmlToCommand()`:
 

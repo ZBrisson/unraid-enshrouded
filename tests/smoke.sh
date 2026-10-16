@@ -6,7 +6,7 @@
 #   3. docker stop finishes inside the stop timeout (not SIGKILLed) and leaves a save
 #   4. second start reuses the install; a backup zip with the save lands in /backups
 #
-# Env: RUNTIME (docker|podman, default docker), TAG (image tag, default the template's),
+# Env: RUNTIME (docker|podman, default docker), IMAGE (full image ref, default the template's),
 #      EXPECTED_BUILD (optional), WORK (scratch dir, default mktemp), KEEP=1 to keep it all,
 #      START_TIMEOUT (seconds, default 2700).
 set -euo pipefail
@@ -48,9 +48,8 @@ for o in "${overrides[@]}"; do set_args+=(--set "$o"); done
 
 mapfile -t args < <(python3 "$root/tools/template.py" render "$template" \
   --name "$name" --tz America/New_York --format lines "${set_args[@]}")
-if [[ -n ${TAG:-} ]]; then
-  image=${args[-1]%:*}:$TAG
-  args[-1]=$image
+if [[ -n ${IMAGE:-} ]]; then
+  args[-1]=$IMAGE
 fi
 image=${args[-1]}
 
@@ -87,8 +86,11 @@ if [[ $runtime == docker ]]; then
   host_owner=$(stat -c %u:%g "$data/server/enshrouded_server.json")
   [[ $host_owner == 99:100 ]] || fail "host sees $host_owner, want 99:100"
 fi
-installed=$(in_ctr cat /opt/enshrouded/current_version 2>/dev/null || true)
+# Steam's own manifest; the image's current_version file only appears after its second update check.
+installed=$(in_ctr sed -nE 's/^[[:space:]]*"buildid"[[:space:]]+"([0-9]+)".*/\1/p' \
+  /opt/enshrouded/server/steamapps/appmanifest_2278520.acf | head -1)
 echo "installed build: ${installed:-unknown}; steamcmd says: ${EXPECTED_BUILD:-not checked}"
+echo "image's current_version: $(in_ctr cat /opt/enshrouded/current_version 2>/dev/null || echo 'not yet written')"
 if [[ -n ${EXPECTED_BUILD:-} && $installed != "$EXPECTED_BUILD" ]]; then
   fail "installed build $installed != steamcmd build $EXPECTED_BUILD"
 fi

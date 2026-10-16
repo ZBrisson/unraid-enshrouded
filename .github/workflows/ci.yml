@@ -28,29 +28,53 @@ jobs:
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
 
+  branches:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.b.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: b
+        run: echo "images=$(python3 tools/template.py branches my-enshrouded.xml)" >> "$GITHUB_OUTPUT"
+
   image:
-    # Every tag the template offers must exist, and every variable the template sets must be
+    # Every image the template offers must pull, and every variable the template sets must be
     # read somewhere in that image's scripts (catches upstream renames).
+    needs: branches
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        tag: [stable-proton, stable-wine] # keep in sync with <Branch>; a test checks the template side
+        include: ${{ fromJSON(needs.branches.outputs.images) }}
+    name: image (${{ matrix.name }})
     steps:
       - uses: actions/checkout@v4
       - name: Pull
         run: |
-          image="$(python3 tools/template.py get my-enshrouded.xml Repository)"
-          image="${image%:*}:${{ matrix.tag }}"
-          echo "IMAGE=$image" >> "$GITHUB_ENV"
-          docker pull "$image"
-          docker image inspect -f 'built {{.Created}}' "$image"
+          docker pull "${{ matrix.image }}"
+          docker image inspect -f 'built {{.Created}}' "${{ matrix.image }}"
       - name: Template variables exist in the image
         run: |
-          id=$(docker create "$IMAGE")
+          id=$(docker create "${{ matrix.image }}")
           docker cp "$id:/usr/local/etc/enshrouded" scripts
           docker rm "$id"
           python3 tools/template.py envcheck my-enshrouded.xml scripts
+
+  upstream-release:
+    # The template pins dev builds until upstream ships a stable release that runs Enshrouded 1.0.
+    # This goes red when a release newer than KNOWN_RELEASE appears: try it, then move back to it.
+    runs-on: ubuntu-latest
+    env:
+      KNOWN_RELEASE: "1.7.2"
+    steps:
+      - run: |
+          latest=$(curl -fsS "https://hub.docker.com/v2/repositories/mornedhels/enshrouded-server/tags?page_size=100" \
+            | jq -r '.results[].name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sort -V | tail -1)
+          echo "latest upstream release: $latest (known: $KNOWN_RELEASE)" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$(printf '%s\n%s\n' "$KNOWN_RELEASE" "$latest" | sort -V | tail -1)" != "$KNOWN_RELEASE" ]; then
+            echo "::error::upstream released $latest; test its stable tags and move the template off the dev pin"
+            exit 1
+          fi
 
   steam:
     runs-on: ubuntu-latest
