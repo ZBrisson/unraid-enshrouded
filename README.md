@@ -60,7 +60,7 @@ On boot the updater logs `Proton files are not available`, verifies the game fil
 
 ### ntsync
 
-Not available: Unraid 6.18.38 doesn't ship the `ntsync` module (`modprobe ntsync` → *Module ntsync not found*). Proton falls back to fsync (`fsync: up and running` in the log). If a later Unraid ships it, check `modprobe ntsync && ls -l /dev/ntsync`, load it from `/boot/config/go` and add `--device=/dev/ntsync` to **Extra Parameters**.
+Not available: Unraid 7.3.2 (kernel `6.18.38-Unraid`) doesn't ship the `ntsync` module (`modprobe ntsync` → *Module ntsync not found*). Proton falls back to fsync (`fsync: up and running` in the log). If a later Unraid ships it, check `modprobe ntsync && ls -l /dev/ntsync`, load it from `/boot/config/go` and add `--device=/dev/ntsync` to **Extra Parameters**.
 
 ### Time zone
 
@@ -70,7 +70,7 @@ Unraid passes `TZ` to every container, and the image honours it: the log's times
 
 | Where | Image | Result |
 |---|---|---|
-| Unraid 6.18.38 (Ryzen 7 3700X, 32 GB), 2026-10-16 | `dev-proton@sha256:d122801b…` | build 25988414 (= steamcmd); `HostOnline`; joined from the game client; backup zip written; container clock EDT; config 99:100 mode 600; idle 82/2048 pids, ~880 MiB |
+| Unraid 7.3.2 (kernel 6.18.38, Ryzen 7 3700X, 32 GB), 2026-10-16 | `dev-proton@sha256:d122801b…` | build 25988414 (= steamcmd); `HostOnline`; joined from the game client; backup zip written; container clock EDT; config 99:100 mode 600; idle 82/2048 pids, ~880 MiB |
 | GitHub runner (smoke), 2026-10-16 | `dev-proton`, `dev-wine` (pinned) | server answers on 15637 after 104 s (proton, first start including the 8.1 GB download); config matches the template; `docker stop` in 14 s, exit 0, save written; backup zip contains `world0.ksd` |
 | Unraid, 2026-10-16 | `stable-proton` 1.7.2 | **fails**: restart loop on `Steamworks Version Mismatch / No SteamUtils011` |
 
