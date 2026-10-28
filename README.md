@@ -4,7 +4,7 @@
 
 An Unraid template for an **Enshrouded** dedicated server, built on [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server). The image is used as-is; this repo adds Unraid defaults and CI that checks the template against the image, Steam and a real server boot.
 
-> **Current pin (2026-10-16):** upstream's `stable` 1.7.2 can't start Enshrouded 1.0 (Steamworks *Version Mismatch*, [#254](https://github.com/mornedhels/enshrouded-server/issues/254)) and its backup script skips 1.0's `world0.ksd` saves ([#256](https://github.com/mornedhels/enshrouded-server/pull/256)). The template pins upstream's `dev-proton`/`dev-wine` builds of 2026-10-15 **by digest**. CI's `upstream-release` job fails when a newer release appears; then test the stable tags and switch back. Because of the digest pin, Unraid's "update available" check won't offer image updates; new images arrive through this repo.
+> **Image tags (2026-10-28):** the template uses upstream's floating `stable-proton`/`stable-wine` tags (release 1.8.1). From 2026-10-16 to 2026-10-28 it pinned upstream `dev-*` builds by digest, because 1.7.2 couldn't start Enshrouded 1.0 ([#254](https://github.com/mornedhels/enshrouded-server/issues/254)) and its backups skipped `world0.ksd` ([#256](https://github.com/mornedhels/enshrouded-server/pull/256)); 1.8.0 fixed both. CI's `upstream-release` job fails when a newer release appears, so it gets a smoke run before you rely on it.
 
 Why this image: it updates the game on a schedule but skips the update while anyone is online, writes zip backups of the world with retention, restarts on a schedule, and maps every `enshrouded_server.json` setting (including server roles) to an environment variable.
 
@@ -12,7 +12,7 @@ Why this image: it updates the game on a schedule but skips the update while any
 
 | | Value | Why |
 |---|---|---|
-| Image | `mornedhels/enshrouded-server:dev-proton@sha256:…` (or `dev-wine@…`, picked at install) | pinned by digest; see the note above |
+| Image | `mornedhels/enshrouded-server:stable-proton` (or `stable-wine`, picked at install) | latest upstream release; see the note above |
 | Port | `15637/udp`, same on host and container | the server advertises its query port |
 | `/opt/enshrouded` | `/mnt/user/appdata/enshrouded` | game, config (role passwords) and world save |
 | `/backups` | `/mnt/user/backup/enshrouded` | world zips, off the cache pool |
@@ -87,7 +87,7 @@ Unraid passes `TZ` to every container, and the image honours it: the log's times
 |---|---|---|
 | `ci` / static | every push and PR, weekly | XML well-formed; Unraid template rules (`tools/template.py validate`); image-specific rules (`tests/test_template.py`); pyflakes, shellcheck, actionlint |
 | `ci` / image | same | every `<Branch>` image pulls, and every variable the template sets is read by that image's scripts (catches upstream renames) |
-| `ci` / upstream-release | same | fails once upstream publishes a release newer than the one the dev pin works around (1.7.2) |
+| `ci` / upstream-release | same | fails once upstream publishes a release newer than the last one smoke-tested (`KNOWN_RELEASE`, 1.8.1) |
 | `ci` / steam | same | steamcmd logs in anonymously and `GAME_BRANCH` has a build |
 | `ci` / template-urls | pushes to main | `TemplateURL` and `Icon` resolve |
 | `smoke` | PRs touching the template or tests, weekly, manual | boots each `<Branch>` image from the rendered template (same arguments as Unraid, including `--pids-limit 2048`): server answers A2S with the template's name and slots; `enshrouded_server.json` matches the template; files are 99:100; installed build = steamcmd's; `docker stop` finishes inside 90 s with a save; restart reuses the install; a backup zip with the save lands in `/backups` |

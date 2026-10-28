@@ -1,15 +1,15 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>enshrouded</Name>
-  <Repository>mornedhels/enshrouded-server:dev-proton@sha256:d122801bb54498f41a6c0d8b27f336ec4c9266ffd5e4660611cb7c20c162318f</Repository>
+  <Repository>mornedhels/enshrouded-server:stable-proton</Repository>
   <Registry>https://hub.docker.com/r/mornedhels/enshrouded-server</Registry>
   <Branch>
-    <Tag>dev-proton@sha256:d122801bb54498f41a6c0d8b27f336ec4c9266ffd5e4660611cb7c20c162318f</Tag>
-    <TagDescription>Proton GE, dev build of 2026-10-15 pinned by digest (stable 1.7.2 can't start Enshrouded 1.0). Pick this.</TagDescription>
+    <Tag>stable-proton</Tag>
+    <TagDescription>Proton GE, latest upstream release (1.8.1 or newer). Pick this.</TagDescription>
   </Branch>
   <Branch>
-    <Tag>dev-wine@sha256:800a888f9d7ecddf7beef0d343f9c8f3864bad211f882de3c77116c299be2af5</Tag>
-    <TagDescription>Plain Wine, same dev build. Fallback if Proton misbehaves; reportedly slower.</TagDescription>
+    <Tag>stable-wine</Tag>
+    <TagDescription>Plain Wine, same release. Fallback if Proton misbehaves; reportedly slower.</TagDescription>
   </Branch>
   <Network>bridge</Network>
   <Shell>bash</Shell>
@@ -26,6 +26,8 @@
   <PostArgs/>
   <CPUset/>
   <Changes>
+### 2026-10-28
+- Back to upstream stable (1.8.1): it includes the Enshrouded 1.0 fixes (#254, #256), so the dev-build digest pin is gone and Unraid's update check works again.
 ### 2026-10-16
 - Pin upstream dev builds by digest: stable 1.7.2 fails on Enshrouded 1.0 (Steamworks Version Mismatch, upstream #254) and its backups skip 1.0 saves (#256). Move back to stable once upstream releases.
 - First version.

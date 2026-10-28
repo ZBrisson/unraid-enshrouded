@@ -61,11 +61,11 @@ jobs:
           python3 tools/template.py envcheck my-enshrouded.xml scripts
 
   upstream-release:
-    # The template pins dev builds until upstream ships a stable release that runs Enshrouded 1.0.
-    # This goes red when a release newer than KNOWN_RELEASE appears: try it, then move back to it.
+    # Goes red when upstream releases something newer than KNOWN_RELEASE: run smoke against the
+    # stable-* tags, update the README's Verified table, then bump KNOWN_RELEASE.
     runs-on: ubuntu-latest
     env:
-      KNOWN_RELEASE: "1.7.2"
+      KNOWN_RELEASE: "1.8.1"
     steps:
       - run: |
           latest=$(curl -fsS "https://hub.docker.com/v2/repositories/mornedhels/enshrouded-server/tags?page_size=100" \
