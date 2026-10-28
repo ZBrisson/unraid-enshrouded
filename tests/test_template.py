@@ -164,7 +164,7 @@ def test_render_rejects_unknown_override(t):
 def test_validator_catches_known_mistakes(tmp_path):
     bad = TEMPLATE.read_text()
     bad = re.sub(r"(<Repository>[^:<]+):[^<]+</Repository>", r"\1:latest</Repository>", bad)
-    bad = re.sub(r"(<Tag>dev-wine@sha256:)[0-9a-f]+", r"\1nothex", bad)
+    bad = re.sub(r"<Tag>stable-wine</Tag>", r"<Tag>stable-wine@sha256:nothex</Tag>", bad)
     bad = bad.replace('Target="SERVER_ENABLE_TEXT_CHAT" Default="false|true" Mode="" Description="" Type="Variable" '
                       'Display="advanced" Required="true" Mask="false">false<',
                       'Target="SERVER_ENABLE_TEXT_CHAT" Default="false|true" Mode="" Description="" Type="Variable" '
