@@ -12,7 +12,7 @@ jobs:
   static:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -33,7 +33,7 @@ jobs:
     outputs:
       images: ${{ steps.b.outputs.images }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: b
         run: echo "images=$(python3 tools/template.py branches my-enshrouded.xml)" >> "$GITHUB_OUTPUT"
 
@@ -48,7 +48,7 @@ jobs:
         include: ${{ fromJSON(needs.branches.outputs.images) }}
     name: image (${{ matrix.name }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Pull
         run: |
           docker pull "${{ matrix.image }}"
@@ -79,7 +79,7 @@ jobs:
   steam:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: GAME_BRANCH exists on Steam
         run: |
           build=$(tests/steam_buildid.sh)
@@ -91,7 +91,7 @@ jobs:
     needs: static
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           for key in TemplateURL Icon; do
             url=$(python3 tools/template.py get my-enshrouded.xml "$key")
