@@ -2,101 +2,116 @@
 
 # unraid-enshrouded
 
-An Unraid template for an **Enshrouded** dedicated server, built on [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server). The image is used as-is; this repo adds Unraid defaults and CI that checks the template against the image, Steam and a real server boot.
+Run a dedicated server for the game [Enshrouded](https://store.steampowered.com/app/1203620/Enshrouded/) on an [Unraid](https://unraid.net/) NAS. A dedicated server keeps your world online when you're not playing, so friends can join at any time.
 
-> **Image tags (2026-10-28):** the template uses upstream's floating `stable-proton`/`stable-wine` tags (release 1.8.1). From 2026-10-16 to 2026-10-28 it pinned upstream `dev-*` builds by digest, because 1.7.2 couldn't start Enshrouded 1.0 ([#254](https://github.com/mornedhels/enshrouded-server/issues/254)) and its backups skipped `world0.ksd` ([#256](https://github.com/mornedhels/enshrouded-server/pull/256)); 1.8.0 fixed both. CI's `upstream-release` job fails when a newer release appears, so it gets a smoke run before you rely on it.
+This repo is an **Unraid template**: a saved container configuration that Unraid's Docker page turns into a fill-in form. The server itself is [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server), used unchanged. The template adds sensible defaults for Unraid. The repo's tests boot a real server whenever the template changes.
 
-Why this image: it updates the game on a schedule but skips the update while anyone is online, writes zip backups of the world with retention, restarts on a schedule, and maps every `enshrouded_server.json` setting (including server roles) to an environment variable.
+What you get:
 
-## What the template sets
+- **Game updates** are checked every 30 minutes and applied only while nobody is online.
+- **World backups** are zipped every 6 hours to a backup share, and the newest 28 are kept.
+- **A daily restart** runs at 05:00, again only when the server is empty.
+- **Two access roles** are set up: **Admin** (full control) and **Friends** (build and play, can't kick or ban). Each role has its own password.
 
-| | Value | Why |
-|---|---|---|
-| Image | `mornedhels/enshrouded-server:stable-proton` (or `stable-wine`, picked at install) | latest upstream release; see the note above |
-| Port | `15637/udp`, same on host and container | the server advertises its query port |
-| `/opt/enshrouded` | `/mnt/user/appdata/enshrouded` | game, config (role passwords) and world save |
-| `/backups` | `/mnt/user/backup/enshrouded` | world zips, off the cache pool |
-| `PUID`/`PGID` | `99`/`100` | Unraid `nobody:users` |
-| `--stop-timeout=90` | | the server's own shutdown waits up to 90 s to save; Docker's default is 10 s |
-| `--memory=16g` | | keeps a runaway server from starving the host |
-| `--cap-drop=ALL` + 5 caps, `no-new-privileges` | | upstream's [hardening](https://github.com/mornedhels/enshrouded-server/blob/main/docs/SECURITY_HARDENING.md) set |
-| Roles | Admin (everything, 1 reserved slot), Friends (build, no kick/ban) | `SERVER_PASSWORD` is deprecated; Enshrouded uses roles |
-| Schedules | update check every 30 min, backup every 6 h (keep 28), restart 05:00 | updates and restarts only when nobody is online |
+## Requirements
+
+- Unraid with Docker enabled. Tested on Unraid 7.3.2.
+- About 16 GB of RAM and 4+ CPU cores for the server alone.
+- Around 10 GB free on an SSD pool for the game files; an update briefly needs about twice that.
+- The ability to forward **UDP port 15637** on your router.
 
 ## Install
 
-On the Unraid server, as root:
+1. On the Unraid server, open a terminal as root and run:
 
-```bash
-mkdir -p /mnt/user/appdata/enshrouded /mnt/user/backup/enshrouded
-chown 99:100 /mnt/user/appdata/enshrouded /mnt/user/backup/enshrouded
-wget -O /boot/config/plugins/dockerMan/templates-user/my-enshrouded.xml \
-  https://raw.githubusercontent.com/ZBrisson/unraid-enshrouded/main/my-enshrouded.xml
+   ```bash
+   mkdir -p /mnt/user/appdata/enshrouded /mnt/user/backup/enshrouded
+   chown 99:100 /mnt/user/appdata/enshrouded /mnt/user/backup/enshrouded
+   wget -O /boot/config/plugins/dockerMan/templates-user/my-enshrouded.xml \
+     https://raw.githubusercontent.com/ZBrisson/unraid-enshrouded/main/my-enshrouded.xml
+   ```
+
+2. In the web UI, go to **Docker → Add Container** and pick **enshrouded** under Template.
+3. Set the **Admin** and **Friends** role passwords (they must differ), change the server name if you like, and click **Apply**.
+4. On your router, forward **UDP 15637** to the Unraid server.
+
+The first start downloads the game (about 8 GB). Watch it with `docker logs -f enshrouded`. The server is ready when the log shows:
+
+```
+[online] Server connected to Steam successfully
+[Session] 'HostOnline' (up)!
 ```
 
-Then **Docker → Add Container → Template: enshrouded**, set the two role passwords, and **Apply**. This is the one web UI step: a container started with `docker run` works, but Unraid's Docker page can't edit or update it.
+Players then find it by name in the game's server browser and enter one of the role passwords.
 
-Forward **UDP 15637** on the router. The first start downloads the game; follow it with `docker logs -f enshrouded` until the server is listed.
+## Everyday use
 
-After the first start, the image restarts the server once at the next update check (`:00` or `:30`). It couldn't record the installed version on the first run, so it re-validates the install once to record it.
+**Change settings.** Go to **Docker → enshrouded → Edit**. The common settings are on the form. Click **Show more settings** to see role permissions, chat, difficulty and schedules. Schedules use the server's local time zone.
 
-A healthy start ends with `[online] Server connected to Steam successfully` and `[Session] 'HostOnline' (up)!`. To check which game build is installed, read the `Game Version (SVN)` log line or `buildid` in `server/steamapps/appmanifest_2278520.acf`; the version the server reports to the server browser stays `0.0.15.0`.
+**Restore a backup.** Stop the container. Unzip the backup you want from `/mnt/user/backup/enshrouded/` into `/mnt/user/appdata/enshrouded/server/savegame/`, replacing the files there. Then start the container.
 
-### Changing the image on an existing container
+**Off-site copies.** Point your backup tool (for example Duplicati) at `/mnt/user/backup/enshrouded/`. If you also back up `appdata/enshrouded`, keep encryption on: `server/enshrouded_server.json` stores the role passwords in plain text. Most of that folder is game files that Steam can re-download, so you can exclude everything except `enshrouded_server.json` and `savegame/`.
 
-**Docker → enshrouded → Edit**, change **Repository** (copy it from the current `my-enshrouded.xml` in this repo), **Apply**. The game files, save and passwords stay. Don't `wget` the template again: after the first Apply, `templates-user/my-enshrouded.xml` holds your passwords and settings, and a fresh copy would wipe them.
+**Switch between Proton and Wine.** The template offers two image tags: `stable-proton` (recommended) and `stable-wine` (fallback, reportedly slower). To switch, go to **Edit**, change **Repository**, and click **Apply**. The game, the save and the passwords are kept.
 
-### Don't run `enshrouded-force-update` on a running container
+**Don't re-download the template** over an installed container. After the first Apply, Unraid's copy of `my-enshrouded.xml` holds your passwords and settings, and a fresh `wget` would erase them.
 
-It runs `rm -rf server/steamapps`, which also deletes the Proton prefix (`steamapps/compatdata/2278520/pfx`). If the server or the updater is running at the time, the server crash-loops with `wine: chdir to …/pfx : No such file or directory`, and the updater's retry can delete the prefix again. To force a clean re-validate:
+## Troubleshooting
+
+**Which game version is running?** The server browser always shows `0.0.15.0`, so ignore that. The real build is the `Game Version (SVN)` line in the log, or `buildid` in `server/steamapps/appmanifest_2278520.acf`.
+
+**The server keeps restarting with `wine: chdir to …/pfx: No such file or directory`.** The Proton files under `server/steamapps/compatdata` were deleted, usually by running the image's `enshrouded-force-update` job while the server was up. Don't run that job. To force a clean check of the game files instead:
 
 ```bash
 docker stop enshrouded
-rm -rf /mnt/user/appdata/enshrouded/server/steamapps/compatdata   # Proton prefix only; the save is in server/savegame
+rm -rf /mnt/user/appdata/enshrouded/server/steamapps/compatdata   # Proton files only; the save is in server/savegame
 docker start enshrouded
 ```
 
-On boot the updater logs `Proton files are not available`, verifies the game files (about a minute, no re-download) and starts the server.
+On start, the log says `Proton files are not available`, the game files are checked (about a minute, no re-download), and the server starts.
 
-### ntsync
+**Players get a version mismatch.** The game was patched and the server hasn't updated yet. It updates at the next check once nobody is online. Restarting the container also triggers a check.
 
-Not available: Unraid 7.3.2 (kernel `6.18.38-Unraid`) doesn't ship the `ntsync` module (`modprobe ntsync` → *Module ntsync not found*). Proton falls back to fsync (`fsync: up and running` in the log). If a later Unraid ships it, check `modprobe ntsync && ls -l /dev/ntsync`, load it from `/boot/config/go` and add `--device=/dev/ntsync` to **Extra Parameters**.
+## What the template sets
 
-### Time zone
+| Setting | Value | Why |
+|---|---|---|
+| Image | `mornedhels/enshrouded-server:stable-proton` (or `stable-wine`) | latest upstream release; Unraid shows when an update is available |
+| Port | `15637/udp`, same number on host and container | the server tells Steam this port, so they must match |
+| `/opt/enshrouded` | `/mnt/user/appdata/enshrouded` | game files, `enshrouded_server.json` (passwords) and the world save |
+| `/backups` | `/mnt/user/backup/enshrouded` | backup zips, kept off the SSD pool |
+| `PUID`/`PGID` | `99`/`100` | Unraid's standard `nobody:users` owner |
+| `--stop-timeout=90` | | gives the server time to save on shutdown; Docker's default is 10 s |
+| `--memory=16g` | | stops a runaway server from starving the rest of the NAS |
+| `--cap-drop=ALL` + 5 capabilities, `no-new-privileges` | | upstream's [hardening](https://github.com/mornedhels/enshrouded-server/blob/main/docs/SECURITY_HARDENING.md) recommendation |
+| Roles | Admin (everything, 1 reserved slot), Friends (build, no kick/ban) | Enshrouded 1.0 uses roles instead of one server password |
+| Schedules | update check every 30 min, backup every 6 h (keep 28), restart 05:00 | updates and restarts wait until nobody is online |
 
-Unraid passes `TZ` to every container, and the image honours it: the log's timestamps are local time, so `RESTART_CRON=0 5 * * *` means 05:00 local. The smoke test checks this too.
-
-## Verified
+## Tested on
 
 | Where | Image | Result |
 |---|---|---|
-| Unraid 7.3.2 (kernel 6.18.38, Ryzen 7 3700X, 32 GB), 2026-10-16 | `dev-proton@sha256:d122801b…` | build 25988414 (= steamcmd); `HostOnline`; joined from the game client; backup zip written; container clock EDT; config 99:100 mode 600; idle 82/2048 pids, ~880 MiB |
-| GitHub runner (smoke), 2026-10-16 | `dev-proton`, `dev-wine` (pinned) | server answers on 15637 after 104 s (proton, first start including the 8.1 GB download); config matches the template; `docker stop` in 14 s, exit 0, save written; backup zip contains `world0.ksd` |
-| Unraid, 2026-10-16 | `stable-proton` 1.7.2 | **fails**: restart loop on `Steamworks Version Mismatch / No SteamUtils011` |
+| Unraid 7.3.2, Ryzen 7 3700X, 32 GB, 2026-10-28 | `stable-proton` (1.8.1) | `HostOnline`; game build 26083076, matching Steam's current build; no version mismatch |
+| GitHub Actions (smoke test), 2026-10-28 | `stable-proton`, `stable-wine` (1.8.1) | both pass every smoke check listed under [Development](#development) |
 
-## Backups and your other backup jobs
+## Development
 
-- **Appdata share** (cache, mover array → cache) keeps the game on the SSD.
-- **In-container backups** are the primary save backup: a zip of the world every 6 hours to `/mnt/user/backup/enshrouded`, newest 28 kept. Restore by stopping the container and unzipping into `appdata/enshrouded/server/savegame/`.
-- **Duplicati**: add `/mnt/user/backup/enshrouded/` to the selected sources for an off-site copy. `enshrouded_server.json` holds the role passwords in plain text, so keep Duplicati's encryption on if you also back up appdata.
-- **Appdata Backup plugin**: it stops the container, archives `appdata/enshrouded`, and starts it again. Most of that folder is the game itself, which Steam re-downloads. After the first start, run `du -sh /mnt/user/appdata/enshrouded/server/*` and add the large game folders to this container's exclusions, keeping `enshrouded_server.json` and `savegame/`. After the plugin's first run, check the container log for `Shutdown complete` to confirm it stopped cleanly.
-
-## CI
+Most changes only touch `my-enshrouded.xml`. CI checks every change:
 
 | Workflow | When | Checks |
 |---|---|---|
-| `ci` / static | every push and PR, weekly | XML well-formed; Unraid template rules (`tools/template.py validate`); image-specific rules (`tests/test_template.py`); pyflakes, shellcheck, actionlint |
-| `ci` / image | same | every `<Branch>` image pulls, and every variable the template sets is read by that image's scripts (catches upstream renames) |
-| `ci` / upstream-release | same | fails once upstream publishes a release newer than the last one smoke-tested (`KNOWN_RELEASE`, 1.8.1) |
-| `ci` / steam | same | steamcmd logs in anonymously and `GAME_BRANCH` has a build |
+| `ci` / static | every push and PR, weekly | the XML is well-formed; Unraid template rules (`tools/template.py validate`); image-specific rules (`tests/test_template.py`); pyflakes, shellcheck, actionlint |
+| `ci` / image | same | every image tag in the template pulls, and every variable the template sets is read by that image's scripts (catches upstream renames) |
+| `ci` / upstream-release | same | fails when upstream publishes a release newer than `KNOWN_RELEASE` in `ci.yml`. Then run `smoke`, update [Tested on](#tested-on), and bump `KNOWN_RELEASE`. |
+| `ci` / steam | same | Steam's servers report a build for the game |
 | `ci` / template-urls | pushes to main | `TemplateURL` and `Icon` resolve |
-| `smoke` | PRs touching the template or tests, weekly, manual | boots each `<Branch>` image from the rendered template (same arguments as Unraid, including `--pids-limit 2048`): server answers A2S with the template's name and slots; `enshrouded_server.json` matches the template; files are 99:100; installed build = steamcmd's; `docker stop` finishes inside 90 s with a save; restart reuses the install; a backup zip with the save lands in `/backups` |
+| `smoke` | PRs touching the template or tests, weekly, manual | boots each image tag with the same arguments Unraid would use, then checks: the server answers with the template's name and slots; `enshrouded_server.json` matches the template; files are owned by 99:100; the installed build matches Steam's; `docker stop` saves and exits within 90 s; a restart reuses the install; a backup zip containing the save lands in `/backups` |
 
-Some rules come from reading the image's scripts and Unraid's `xmlToCommand()`:
+The tests also enforce three Unraid quirks found by reading the image's scripts and Unraid's `xmlToCommand()`:
 
-- **Typed values can't be empty.** The image passes the slot count, query port, chat flags and role permissions to `jq --argjson`. If one is empty, jq fails and the script writes an **empty** `enshrouded_server.json`. Unraid passes empty variables (`-e X=''`), so the tests require a typed value for each of these.
-- **Dropdowns need a stored value.** With no value, Unraid passes the `Default` text, which for a dropdown is the literal `true|false`.
-- **The pids limit is mirrored.** Unraid adds `--pids-limit 2048` unless Extra Parameters sets one, so the smoke test runs with it and fails if the server comes close to it.
+- **Typed values can't be empty.** The image passes numbers and true/false settings to `jq --argjson`. If one is empty, `jq` fails and the server gets an **empty** `enshrouded_server.json`. Unraid passes empty variables as `-e X=''`, so every such setting needs a value.
+- **Dropdowns need a stored value.** Without one, Unraid passes the dropdown's option list, such as the literal text `true|false`.
+- **The process limit is mirrored.** Unraid adds `--pids-limit 2048` unless Extra Parameters sets one, so the smoke test uses the same limit.
 
 Run locally:
 
