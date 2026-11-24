@@ -26,6 +26,12 @@ mkdir -p "$data" "$backups" "$logs"
 step() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 in_ctr() { "$runtime" exec "$name" "$@"; }
+# Snapshot the log, then search it. Piping "logs | grep -q" fails under pipefail when grep exits
+# on an early match and SIGPIPEs the writer.
+log_has() {
+  "$runtime" logs "$name" >"$logs/snapshot.log" 2>&1 || true
+  grep -q -- "$1" "$logs/snapshot.log"
+}
 
 cleanup() {
   "$runtime" logs "$name" >"$logs/container.log" 2>&1 || true
@@ -68,9 +74,9 @@ wait_a2s() {
       fail "tools/a2s.py failed, not just unanswered"
     fi
     # The image's updater retries once, then gives up and starts a server with no game files.
-    if "$runtime" logs "$name" 2>&1 | grep -q "server failed - aborting update"; then
+    if log_has "server failed - aborting update"; then
       "$runtime" logs --tail 80 "$name" >&2 || true
-      if "$runtime" logs "$name" 2>&1 | grep -q "Steamcmd needs to be online"; then
+      if log_has "Steamcmd needs to be online"; then
         fail "steamcmd in the container cannot reach Steam; check the runtime version ($("$runtime" version --format '{{.Server.Version}}' 2>/dev/null || echo unknown))"
       fi
       fail "the image's updater gave up on the game download"
@@ -129,7 +135,9 @@ took=$((SECONDS - t0))
 code=$("$runtime" inspect -f '{{.State.ExitCode}}' "$name")
 echo "stopped in ${took}s (timeout ${stop_timeout}s), exit code $code"
 (( code != 137 )) || fail "SIGKILLed after ${stop_timeout}s: the server did not shut down cleanly"
-"$runtime" logs "$name" 2>&1 | grep -q "Shutdown complete" || fail "no 'Shutdown complete' in the log"
+# The last lines can reach "docker logs" a moment after "docker stop" returns.
+for _ in $(seq 10); do log_has "Shutdown complete" && break; sleep 1; done
+log_has "Shutdown complete" || fail "no 'Shutdown complete' in the log"
 saves=$(find "$data/server/savegame" -maxdepth 1 -type f \( -name 'world*.ksd' -o -name '3ad85aea*' \) 2>/dev/null | wc -l)
 (( saves > 0 )) || fail "no world save in server/savegame after a clean stop"
 
