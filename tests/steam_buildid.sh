@@ -16,6 +16,13 @@ for attempt in 1 2 3; do
     echo "$id"
     exit 0
   fi
+  # Retrying can't fix a runtime that blocks steamcmd's sockets (Docker 29.4.2's seccomp
+  # profile does); say so instead of looking like a Steam outage.
+  if grep -q 'CreateBoundSocket: failed to create socket' <<<"$out"; then
+    printf '%s\n' "$out" | tail -40 >&2
+    echo "::error::steamcmd cannot open a socket in the container; check the runtime version ($("$runtime" version --format '{{.Server.Version}}' 2>/dev/null || echo unknown))" >&2
+    exit 1
+  fi
   echo "attempt $attempt: no build id yet" >&2
   sleep 10
 done

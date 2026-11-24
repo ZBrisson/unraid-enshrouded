@@ -1,0 +1,5 @@
+# actionlint 1.7.12 doesn't know GitHub's ubuntu-26.04 label yet. Declaring it here keeps every
+# other runner-label check; drop this file once actionlint lists ubuntu-26.04 itself.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

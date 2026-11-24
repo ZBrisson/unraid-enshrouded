@@ -60,10 +60,26 @@ printf '%q ' "$runtime" run -d "${args[@]}" | sed -E 's/(PASSWORD=)[^ ]+/\1***/g
 
 wait_a2s() {
   local started=$SECONDS reply
-  if ! reply=$(python3 "$root/tools/a2s.py" 127.0.0.1 "$port" --wait "$1"); then
-    "$runtime" logs --tail 80 "$name" >&2 || true
-    fail "no A2S reply within $1 s"
-  fi
+  # Poll in short slices so a dead steamcmd fails in minutes, not after the whole timeout.
+  until reply=$(python3 "$root/tools/a2s.py" 127.0.0.1 "$port" --wait 30 2>"$logs/a2s.err"); do
+    # "no A2S reply" is expected while the game downloads; anything else is a bug in the probe.
+    if grep -qv '^no A2S reply' "$logs/a2s.err"; then
+      cat "$logs/a2s.err" >&2
+      fail "tools/a2s.py failed, not just unanswered"
+    fi
+    # The image's updater retries once, then gives up and starts a server with no game files.
+    if "$runtime" logs "$name" 2>&1 | grep -q "server failed - aborting update"; then
+      "$runtime" logs --tail 80 "$name" >&2 || true
+      if "$runtime" logs "$name" 2>&1 | grep -q "Steamcmd needs to be online"; then
+        fail "steamcmd in the container cannot reach Steam; check the runtime version ($("$runtime" version --format '{{.Server.Version}}' 2>/dev/null || echo unknown))"
+      fi
+      fail "the image's updater gave up on the game download"
+    fi
+    if (( SECONDS - started >= $1 )); then
+      "$runtime" logs --tail 80 "$name" >&2 || true
+      fail "no A2S reply within $1 s"
+    fi
+  done
   echo "A2S after $((SECONDS - started)) s: $reply" >&2
   echo "$reply"
 }

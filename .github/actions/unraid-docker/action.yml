@@ -1,0 +1,32 @@
+name: Unraid's Docker
+description: >
+  Run the job's containers on the Docker Engine an Unraid release ships, not the runner's.
+  The tests claim "works on Unraid"; the engine (and its default seccomp profile) is part of
+  that environment. The versions live in .github/unraid.json; drift / unraid-release checks
+  them against Unraid's release notes.
+inputs:
+  version:
+    description: Docker Engine version, from a target in .github/unraid.json (e.g. 29.8.2)
+    required: true
+  unraid:
+    description: The Unraid release that ships it, for the job summary
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-docker-action@3f1ab1ab0e29231562e4db4ca600c1a49653bac6 # v5.7.0
+      with:
+        version: v${{ inputs.version }}
+        set-host: true
+    - name: Engine matches Unraid
+      shell: bash
+      env:
+        WANT: ${{ inputs.version }}
+        UNRAID: ${{ inputs.unraid }}
+      run: |
+        got=$(docker version --format '{{.Server.Version}}')
+        echo "Docker Engine: $got (Unraid $UNRAID ships $WANT)" | tee -a "$GITHUB_STEP_SUMMARY"
+        if [[ $got != "$WANT" ]]; then
+          echo "::error::tests would run on Docker $got, not Unraid $UNRAID's $WANT"
+          exit 1
+        fi

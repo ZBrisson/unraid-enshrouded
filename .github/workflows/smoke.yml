@@ -17,32 +17,53 @@ on:
       - tests/check_config.py
       - tests/steam_buildid.sh
       - .github/workflows/smoke.yml
+      - .github/actions/**
+      - .github/unraid.json
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failing command in a pipe fails the step
 concurrency:
   group: smoke-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   steam:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       build: ${{ steps.build.outputs.build }}
       images: ${{ steps.b.outputs.images }}
     steps:
       - uses: actions/checkout@v4
+      - id: newest
+        # The build id doesn't depend on the engine; ask on the newest tested Unraid's Docker.
+        run: |
+          jq -r '.targets | max_by(.unraid | split(".") | map(tonumber))
+                 | "docker=\(.docker)\nunraid=\(.unraid)"' .github/unraid.json >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/unraid-docker
+        with:
+          version: ${{ steps.newest.outputs.docker }}
+          unraid: ${{ steps.newest.outputs.unraid }}
       - id: build
-        run: echo "build=$(tests/steam_buildid.sh)" >> "$GITHUB_OUTPUT"
+        # Own line, so a steamcmd failure fails the job instead of passing an empty build on.
+        run: |
+          build=$(tests/steam_buildid.sh)
+          echo "build=$build" >> "$GITHUB_OUTPUT"
       - id: b
         env:
           ONLY: ${{ inputs.only }}
+        # Every image tag on every tested Unraid's Docker Engine (.github/unraid.json).
         run: |
           images=$(python3 tools/template.py branches my-enshrouded.xml \
-            | jq -c --arg only "$ONLY" 'map(select($only == "" or .name == $only))')
+            | jq -c --arg only "$ONLY" --slurpfile u .github/unraid.json '
+                [ .[] | select($only == "" or .name == $only) as $i | $u[0].targets[]
+                  | {name: "\($i.name), \(.name)", id: "\($i.name)-\(.name)", image: $i.image,
+                     docker, unraid} ]')
           echo "images=$images" >> "$GITHUB_OUTPUT"
 
   smoke:
     needs: steam
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -55,6 +76,10 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/unraid-docker
+        with:
+          version: ${{ matrix.docker }}
+          unraid: ${{ matrix.unraid }}
       - name: Smoke test
         env:
           IMAGE: ${{ matrix.image }}
@@ -65,6 +90,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-${{ matrix.name }}
+          name: smoke-${{ matrix.id }}
           path: ${{ runner.temp }}/smoke/logs
           if-no-files-found: ignore

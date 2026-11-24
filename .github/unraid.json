@@ -1,0 +1,7 @@
+{
+  "policy": "Test the newest release of the two newest Unraid major versions, each on the Docker Engine it ships. drift / unraid-release goes red when this list falls behind (python3 tools/unraid_releases.py check .github/unraid.json).",
+  "targets": [
+    {"name": "unraid-6", "unraid": "6.12.15", "docker": "24.0.9"},
+    {"name": "unraid-7", "unraid": "7.4.1", "docker": "29.8.2"}
+  ]
+}

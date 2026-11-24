@@ -1,0 +1,49 @@
+name: drift
+# Is the repo still current with things that change outside it? These checks read live data
+# (Docker Hub tags, Unraid's release notes), so they run on a schedule and never gate an
+# unrelated PR. A PR that edits what they check runs them too. Scheduled failures open an issue
+# (scheduled-alerts.yml).
+on:
+  schedule:
+    - cron: "5 6 * * 1" # weekly, before ci
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/unraid.json
+      - tools/unraid_releases.py
+      - .github/workflows/drift.yml
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failing command in a pipe fails the step
+jobs:
+  upstream-release:
+    # Goes red when upstream releases something newer than KNOWN_RELEASE: run smoke against the
+    # stable-* tags, update the README's Tested on table, then bump KNOWN_RELEASE.
+    runs-on: ubuntu-26.04
+    env:
+      KNOWN_RELEASE: "1.8.1"
+    steps:
+      - run: |
+          latest=$(curl -fsS "https://hub.docker.com/v2/repositories/mornedhels/enshrouded-server/tags?page_size=100" \
+            | jq -r '.results[].name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sort -V | tail -1)
+          if [[ -z $latest ]]; then
+            echo "::error::no release tags in Docker Hub's reply; the check can't tell"
+            exit 1
+          fi
+          echo "latest upstream release: $latest (known: $KNOWN_RELEASE)" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$(printf '%s\n%s\n' "$KNOWN_RELEASE" "$latest" | sort -V | tail -1)" != "$KNOWN_RELEASE" ]; then
+            echo "::error::upstream released $latest; run smoke on its stable tags, update Tested on, bump KNOWN_RELEASE"
+            exit 1
+          fi
+
+  unraid-release:
+    # Goes red when Unraid ships a release newer than a target in .github/unraid.json, or when a
+    # target's Docker version disagrees with the release notes. Update the file, then run smoke.
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/unraid_releases.py check .github/unraid.json | tee -a "$GITHUB_STEP_SUMMARY"

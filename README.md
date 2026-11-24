@@ -15,7 +15,7 @@ What you get:
 
 ## Requirements
 
-- Unraid with Docker enabled. Tested on Unraid 7.3.2.
+- Unraid 6.12 or 7.x with Docker enabled. CI tests the newest 6.x and 7.x releases on the Docker Engine each one ships (listed in [`.github/unraid.json`](.github/unraid.json)). On real hardware it has been tested on Unraid 7.3.2.
 - About 16 GB of RAM and 4+ CPU cores for the server alone.
 - Around 10 GB free on an SSD pool for the game files; an update briefly needs about twice that.
 - The ability to forward **UDP port 15637** on your router.
@@ -70,6 +70,8 @@ docker start enshrouded
 
 On start, the log says `Proton files are not available`, the game files are checked (about a minute, no re-download), and the server starts.
 
+**The game never downloads: the log says `Steamcmd needs to be online to update` or `CreateBoundSocket: failed to create socket, error … (38)`.** Docker 29.4.2's default seccomp profile blocks a socket call that the 32-bit `steamcmd` makes, so it can't reach Steam even though the network is fine. Check with `docker version --format '{{.Server.Version}}'`. Docker 29.4.3 reverts the rule, and Unraid 7.3.0 went straight from 29.3.1 to 29.4.3, so this mostly hits a Docker you installed or pinned yourself. If you can't upgrade, add `--security-opt seccomp=unconfined` to **Extra Parameters**. That removes the syscall filter for this container only; the dropped capabilities and `no-new-privileges` still apply.
+
 **Players get a version mismatch.** The game was patched and the server hasn't updated yet. It updates at the next check once nobody is online. Restarting the container also triggers a check.
 
 ## What the template sets
@@ -102,16 +104,20 @@ Most changes only touch `my-enshrouded.xml`. CI checks every change:
 |---|---|---|
 | `ci` / static | every push and PR, weekly | the XML is well-formed; Unraid template rules (`tools/template.py validate`); image-specific rules (`tests/test_template.py`); pyflakes, shellcheck, actionlint |
 | `ci` / image | same | every image tag in the template pulls, and every variable the template sets is read by that image's scripts (catches upstream renames) |
-| `ci` / upstream-release | same | fails when upstream publishes a release newer than `KNOWN_RELEASE` in `ci.yml`. Then run `smoke`, update [Tested on](#tested-on), and bump `KNOWN_RELEASE`. |
-| `ci` / steam | same | Steam's servers report a build for the game |
+| `ci` / steam | every push and PR, weekly | Steam's servers report a build for the game, checked from each tested Unraid's Docker Engine |
 | `ci` / template-urls | pushes to main | `TemplateURL` and `Icon` resolve |
-| `smoke` | PRs touching the template or tests, weekly, manual | boots each image tag with the same arguments Unraid would use, then checks: the server answers with the template's name and slots; `enshrouded_server.json` matches the template; files are owned by 99:100; the installed build matches Steam's; `docker stop` saves and exits within 90 s; a restart reuses the install; a backup zip containing the save lands in `/backups` |
+| `smoke` | PRs touching the template or tests, weekly, manual | boots each image tag on each tested Unraid's Docker Engine, with the same arguments Unraid would use, then checks: the server answers with the template's name and slots; `enshrouded_server.json` matches the template; files are owned by 99:100; the installed build matches Steam's; `docker stop` saves and exits within 90 s; a restart reuses the install; a backup zip containing the save lands in `/backups` |
+| `drift` / upstream-release | weekly, manual, PRs that edit what it checks | fails when upstream publishes a release newer than `KNOWN_RELEASE` in `drift.yml`. Then run `smoke`, update [Tested on](#tested-on), and bump `KNOWN_RELEASE`. |
+| `drift` / unraid-release | same as above | fails when Unraid releases something newer than a target in `.github/unraid.json`, or when a target's Docker version disagrees with Unraid's release notes. Then update the file and run `smoke`. |
+| `scheduled-alerts` | after each scheduled `ci`, `smoke` or `drift` run | a failing run opens an issue (or comments on the open one); the next passing scheduled run closes it |
 
 The tests also enforce three Unraid quirks found by reading the image's scripts and Unraid's `xmlToCommand()`:
 
 - **Typed values can't be empty.** The image passes numbers and true/false settings to `jq --argjson`. If one is empty, `jq` fails and the server gets an **empty** `enshrouded_server.json`. Unraid passes empty variables as `-e X=''`, so every such setting needs a value.
 - **Dropdowns need a stored value.** Without one, Unraid passes the dropdown's option list, such as the literal text `true|false`.
 - **The process limit is mirrored.** Unraid adds `--pids-limit 2048` unless Extra Parameters sets one, so the smoke test uses the same limit.
+
+The jobs that run containers use **the Docker Engine Unraid ships**, not the runner's, and fail if the engine doesn't match (`.github/actions/unraid-docker`). The engine is part of what's being tested: GitHub's ubuntu-26.04 image shipped Docker 29.4.2, whose seccomp profile blocks `steamcmd`, and the smoke test went red for a problem no Unraid user had. `.github/unraid.json` lists the targets: the newest release of the two newest Unraid majors, each with its Docker version. `drift / unraid-release` reads Unraid's release notes and goes red when that list is out of date. CI can't reproduce Unraid's kernel or userland, so the [Tested on](#tested-on) rows from real hardware remain the final check.
 
 Run locally:
 
