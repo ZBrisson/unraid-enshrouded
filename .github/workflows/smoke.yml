@@ -21,6 +21,9 @@ on:
       - .github/unraid.json
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failing command in a pipe fails the step
 concurrency:
   group: smoke-${{ github.ref }}
   cancel-in-progress: true
@@ -34,7 +37,9 @@ jobs:
       - uses: actions/checkout@v4
       - id: newest
         # The build id doesn't depend on the engine; ask on the newest tested Unraid's Docker.
-        run: jq -r '.targets[-1] | "docker=\(.docker)\nunraid=\(.unraid)"' .github/unraid.json >> "$GITHUB_OUTPUT"
+        run: |
+          jq -r '.targets | max_by(.unraid | split(".") | map(tonumber))
+                 | "docker=\(.docker)\nunraid=\(.unraid)"' .github/unraid.json >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/unraid-docker
         with:
           version: ${{ steps.newest.outputs.docker }}

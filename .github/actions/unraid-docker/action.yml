@@ -2,7 +2,7 @@ name: Unraid's Docker
 description: >
   Run the job's containers on the Docker Engine an Unraid release ships, not the runner's.
   The tests claim "works on Unraid"; the engine (and its default seccomp profile) is part of
-  that environment. The versions live in .github/unraid.json; ci / unraid-release checks
+  that environment. The versions live in .github/unraid.json; drift / unraid-release checks
   them against Unraid's release notes.
 inputs:
   version:

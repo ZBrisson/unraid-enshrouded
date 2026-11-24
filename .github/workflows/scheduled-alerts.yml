@@ -1,0 +1,45 @@
+name: scheduled-alerts
+# A weekly check is only useful if someone sees it fail. Failure emails went unread for four
+# weeks, so a failing scheduled run opens one issue per workflow (later failures comment on it),
+# and the next passing scheduled run closes it.
+on:
+  workflow_run:
+    workflows: [ci, smoke, drift]
+    types: [completed]
+permissions:
+  issues: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  issue:
+    if: github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-26.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      WORKFLOW: ${{ github.event.workflow_run.name }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - run: |
+          title="Scheduled $WORKFLOW run is failing"
+          open=$(gh issue list --state open --limit 100 --json number,title \
+            | jq -r --arg t "$title" '[.[] | select(.title == $t) | .number][0] // empty')
+          case $CONCLUSION in
+            success)
+              if [[ -n $open ]]; then
+                gh issue close "$open" --comment "Passing again: $RUN_URL"
+              fi ;;
+            failure | timed_out)
+              body="The scheduled \`$WORKFLOW\` run ended with **$CONCLUSION** on \`${SHA:0:7}\`: $RUN_URL"
+              if [[ -n $open ]]; then
+                gh issue comment "$open" --body "$body"
+              else
+                gh issue create --title "$title" --body "$body
+
+          This issue closes itself when a scheduled \`$WORKFLOW\` run passes."
+              fi ;;
+            *) echo "conclusion $CONCLUSION: nothing to do" ;;
+          esac

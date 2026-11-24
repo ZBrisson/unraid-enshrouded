@@ -5,9 +5,12 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: "17 6 * * 1" # weekly: catch upstream image and Steam changes
+    - cron: "17 6 * * 1" # weekly: catch upstream image and Steam changes (failures open an issue)
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failing command in a pipe fails the step
 jobs:
   static:
     runs-on: ubuntu-26.04
@@ -64,32 +67,6 @@ jobs:
           docker cp "$id:/usr/local/etc/enshrouded" scripts
           docker rm "$id"
           python3 tools/template.py envcheck my-enshrouded.xml scripts
-
-  upstream-release:
-    # Goes red when upstream releases something newer than KNOWN_RELEASE: run smoke against the
-    # stable-* tags, update the README's Verified table, then bump KNOWN_RELEASE.
-    runs-on: ubuntu-26.04
-    env:
-      KNOWN_RELEASE: "1.8.1"
-    steps:
-      - run: |
-          latest=$(curl -fsS "https://hub.docker.com/v2/repositories/mornedhels/enshrouded-server/tags?page_size=100" \
-            | jq -r '.results[].name | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sort -V | tail -1)
-          echo "latest upstream release: $latest (known: $KNOWN_RELEASE)" | tee -a "$GITHUB_STEP_SUMMARY"
-          if [ "$(printf '%s\n%s\n' "$KNOWN_RELEASE" "$latest" | sort -V | tail -1)" != "$KNOWN_RELEASE" ]; then
-            echo "::error::upstream released $latest; test its stable tags and move the template off the dev pin"
-            exit 1
-          fi
-
-  unraid-release:
-    # Goes red when Unraid ships a release newer than a target in .github/unraid.json, or when a
-    # target's Docker version disagrees with the release notes. Update the file, then run smoke.
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v4
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 tools/unraid_releases.py check .github/unraid.json | tee -a "$GITHUB_STEP_SUMMARY"
 
   steam:
     # steamcmd on every tested Unraid's Docker Engine: cheap, and it's what broke on 29.4.2.
