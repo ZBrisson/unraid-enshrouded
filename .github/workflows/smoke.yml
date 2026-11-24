@@ -17,6 +17,7 @@ on:
       - tests/check_config.py
       - tests/steam_buildid.sh
       - .github/workflows/smoke.yml
+      - .github/actions/**
 permissions:
   contents: read
 concurrency:
@@ -24,14 +25,18 @@ concurrency:
   cancel-in-progress: true
 jobs:
   steam:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       build: ${{ steps.build.outputs.build }}
       images: ${{ steps.b.outputs.images }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/unraid-docker
       - id: build
-        run: echo "build=$(tests/steam_buildid.sh)" >> "$GITHUB_OUTPUT"
+        # Own line, so a steamcmd failure fails the job instead of passing an empty build on.
+        run: |
+          build=$(tests/steam_buildid.sh)
+          echo "build=$build" >> "$GITHUB_OUTPUT"
       - id: b
         env:
           ONLY: ${{ inputs.only }}
@@ -42,7 +47,7 @@ jobs:
 
   smoke:
     needs: steam
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -55,6 +60,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/unraid-docker
       - name: Smoke test
         env:
           IMAGE: ${{ matrix.image }}

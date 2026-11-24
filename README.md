@@ -70,6 +70,8 @@ docker start enshrouded
 
 On start, the log says `Proton files are not available`, the game files are checked (about a minute, no re-download), and the server starts.
 
+**The game never downloads: the log says `Steamcmd needs to be online to update` or `CreateBoundSocket: failed to create socket, error … (38)`.** Docker 29.4.2's default seccomp profile blocks a socket call that the 32-bit `steamcmd` makes, so it can't reach Steam even though the network is fine. Check with `docker version --format '{{.Server.Version}}'`. Docker 29.4.3 reverts the rule, and Unraid 7.3.2 ships 29.8.2, so this only happens on an older or pinned Docker. If you can't upgrade, add `--security-opt seccomp=unconfined` to **Extra Parameters**. That removes the syscall filter for this container only; the dropped capabilities and `no-new-privileges` still apply.
+
 **Players get a version mismatch.** The game was patched and the server hasn't updated yet. It updates at the next check once nobody is online. Restarting the container also triggers a check.
 
 ## What the template sets
@@ -91,7 +93,7 @@ On start, the log says `Proton files are not available`, the game files are chec
 
 | Where | Image | Result |
 |---|---|---|
-| Unraid 7.3.2, Ryzen 7 3700X, 32 GB, 2026-10-28 | `stable-proton` (1.8.1) | `HostOnline`; game build 26083076, matching Steam's current build; no version mismatch |
+| Unraid 7.3.2 (Docker 29.8.2), Ryzen 7 3700X, 32 GB, 2026-10-28 | `stable-proton` (1.8.1) | `HostOnline`; game build 26083076, matching Steam's current build; no version mismatch |
 | GitHub Actions (smoke test), 2026-10-28 | `stable-proton`, `stable-wine` (1.8.1) | both pass every smoke check listed under [Development](#development) |
 
 ## Development
@@ -112,6 +114,8 @@ The tests also enforce three Unraid quirks found by reading the image's scripts 
 - **Typed values can't be empty.** The image passes numbers and true/false settings to `jq --argjson`. If one is empty, `jq` fails and the server gets an **empty** `enshrouded_server.json`. Unraid passes empty variables as `-e X=''`, so every such setting needs a value.
 - **Dropdowns need a stored value.** Without one, Unraid passes the dropdown's option list, such as the literal text `true|false`.
 - **The process limit is mirrored.** Unraid adds `--pids-limit 2048` unless Extra Parameters sets one, so the smoke test uses the same limit.
+
+The jobs that run containers use **Unraid's Docker Engine version**, not the runner's (`.github/actions/unraid-docker`, currently 29.8.2), and fail if the engine doesn't match. The engine is part of what's being tested: GitHub's ubuntu-26.04 image shipped Docker 29.4.2, whose seccomp profile blocks `steamcmd`, and the smoke test went red for a problem no Unraid user had. When Unraid's Docker changes, bump that action's `version` and the [Tested on](#tested-on) table together.
 
 Run locally:
 

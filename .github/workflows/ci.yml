@@ -10,7 +10,7 @@ permissions:
   contents: read
 jobs:
   static:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,7 +29,7 @@ jobs:
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
 
   branches:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       images: ${{ steps.b.outputs.images }}
     steps:
@@ -41,7 +41,7 @@ jobs:
     # Every image the template offers must pull, and every variable the template sets must be
     # read somewhere in that image's scripts (catches upstream renames).
     needs: branches
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +63,7 @@ jobs:
   upstream-release:
     # Goes red when upstream releases something newer than KNOWN_RELEASE: run smoke against the
     # stable-* tags, update the README's Verified table, then bump KNOWN_RELEASE.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       KNOWN_RELEASE: "1.8.1"
     steps:
@@ -77,9 +77,10 @@ jobs:
           fi
 
   steam:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/unraid-docker
       - name: GAME_BRANCH exists on Steam
         run: |
           build=$(tests/steam_buildid.sh)
@@ -89,7 +90,7 @@ jobs:
     # The URLs Unraid fetches must resolve once the template is on main.
     if: github.event_name != 'pull_request'
     needs: static
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
       - run: |
