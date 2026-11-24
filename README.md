@@ -15,7 +15,7 @@ What you get:
 
 ## Requirements
 
-- Unraid with Docker enabled. Tested on Unraid 7.3.2.
+- Unraid 6.12 or 7.x with Docker enabled. CI tests the newest 6.x and 7.x releases on the Docker Engine each one ships (currently 6.12.15 with Docker 24.0.9, and 7.4.1 with Docker 29.8.2). On real hardware it has been tested on Unraid 7.3.2.
 - About 16 GB of RAM and 4+ CPU cores for the server alone.
 - Around 10 GB free on an SSD pool for the game files; an update briefly needs about twice that.
 - The ability to forward **UDP port 15637** on your router.
@@ -105,9 +105,10 @@ Most changes only touch `my-enshrouded.xml`. CI checks every change:
 | `ci` / static | every push and PR, weekly | the XML is well-formed; Unraid template rules (`tools/template.py validate`); image-specific rules (`tests/test_template.py`); pyflakes, shellcheck, actionlint |
 | `ci` / image | same | every image tag in the template pulls, and every variable the template sets is read by that image's scripts (catches upstream renames) |
 | `ci` / upstream-release | same | fails when upstream publishes a release newer than `KNOWN_RELEASE` in `ci.yml`. Then run `smoke`, update [Tested on](#tested-on), and bump `KNOWN_RELEASE`. |
-| `ci` / steam | same | Steam's servers report a build for the game |
+| `ci` / unraid-release | same | fails when Unraid releases something newer than a target in `.github/unraid.json`, or when a target's Docker version disagrees with Unraid's release notes. Then update the file and run `smoke`. |
+| `ci` / steam | same | Steam's servers report a build for the game, checked from each tested Unraid's Docker Engine |
 | `ci` / template-urls | pushes to main | `TemplateURL` and `Icon` resolve |
-| `smoke` | PRs touching the template or tests, weekly, manual | boots each image tag with the same arguments Unraid would use, then checks: the server answers with the template's name and slots; `enshrouded_server.json` matches the template; files are owned by 99:100; the installed build matches Steam's; `docker stop` saves and exits within 90 s; a restart reuses the install; a backup zip containing the save lands in `/backups` |
+| `smoke` | PRs touching the template or tests, weekly, manual | boots each image tag on each tested Unraid's Docker Engine, with the same arguments Unraid would use, then checks: the server answers with the template's name and slots; `enshrouded_server.json` matches the template; files are owned by 99:100; the installed build matches Steam's; `docker stop` saves and exits within 90 s; a restart reuses the install; a backup zip containing the save lands in `/backups` |
 
 The tests also enforce three Unraid quirks found by reading the image's scripts and Unraid's `xmlToCommand()`:
 
@@ -115,7 +116,7 @@ The tests also enforce three Unraid quirks found by reading the image's scripts 
 - **Dropdowns need a stored value.** Without one, Unraid passes the dropdown's option list, such as the literal text `true|false`.
 - **The process limit is mirrored.** Unraid adds `--pids-limit 2048` unless Extra Parameters sets one, so the smoke test uses the same limit.
 
-The jobs that run containers use **Unraid's Docker Engine version**, not the runner's (`.github/actions/unraid-docker`, currently 29.8.2), and fail if the engine doesn't match. The engine is part of what's being tested: GitHub's ubuntu-26.04 image shipped Docker 29.4.2, whose seccomp profile blocks `steamcmd`, and the smoke test went red for a problem no Unraid user had. When Unraid's Docker changes, bump that action's `version` and the [Tested on](#tested-on) table together.
+The jobs that run containers use **the Docker Engine Unraid ships**, not the runner's, and fail if the engine doesn't match (`.github/actions/unraid-docker`). The engine is part of what's being tested: GitHub's ubuntu-26.04 image shipped Docker 29.4.2, whose seccomp profile blocks `steamcmd`, and the smoke test went red for a problem no Unraid user had. `.github/unraid.json` lists the targets: the newest release of the two newest Unraid majors, each with its Docker version. `ci / unraid-release` reads Unraid's release notes and goes red when that list is out of date. CI can't reproduce Unraid's kernel or userland, so the [Tested on](#tested-on) rows from real hardware remain the final check.
 
 Run locally:
 

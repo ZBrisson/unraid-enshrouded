@@ -18,6 +18,7 @@ on:
       - tests/steam_buildid.sh
       - .github/workflows/smoke.yml
       - .github/actions/**
+      - .github/unraid.json
 permissions:
   contents: read
 concurrency:
@@ -31,7 +32,13 @@ jobs:
       images: ${{ steps.b.outputs.images }}
     steps:
       - uses: actions/checkout@v4
+      - id: newest
+        # The build id doesn't depend on the engine; ask on the newest tested Unraid's Docker.
+        run: jq -r '.targets[-1] | "docker=\(.docker)\nunraid=\(.unraid)"' .github/unraid.json >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/unraid-docker
+        with:
+          version: ${{ steps.newest.outputs.docker }}
+          unraid: ${{ steps.newest.outputs.unraid }}
       - id: build
         # Own line, so a steamcmd failure fails the job instead of passing an empty build on.
         run: |
@@ -40,9 +47,13 @@ jobs:
       - id: b
         env:
           ONLY: ${{ inputs.only }}
+        # Every image tag on every tested Unraid's Docker Engine (.github/unraid.json).
         run: |
           images=$(python3 tools/template.py branches my-enshrouded.xml \
-            | jq -c --arg only "$ONLY" 'map(select($only == "" or .name == $only))')
+            | jq -c --arg only "$ONLY" --slurpfile u .github/unraid.json '
+                [ .[] | select($only == "" or .name == $only) as $i | $u[0].targets[]
+                  | {name: "\($i.name), \(.name)", id: "\($i.name)-\(.name)", image: $i.image,
+                     docker, unraid} ]')
           echo "images=$images" >> "$GITHUB_OUTPUT"
 
   smoke:
@@ -61,6 +72,9 @@ jobs:
           df -h /
       - uses: actions/checkout@v4
       - uses: ./.github/actions/unraid-docker
+        with:
+          version: ${{ matrix.docker }}
+          unraid: ${{ matrix.unraid }}
       - name: Smoke test
         env:
           IMAGE: ${{ matrix.image }}
@@ -71,6 +85,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-${{ matrix.name }}
+          name: smoke-${{ matrix.id }}
           path: ${{ runner.temp }}/smoke/logs
           if-no-files-found: ignore

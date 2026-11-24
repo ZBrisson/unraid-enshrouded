@@ -32,10 +32,15 @@ jobs:
     runs-on: ubuntu-26.04
     outputs:
       images: ${{ steps.b.outputs.images }}
+      unraid: ${{ steps.b.outputs.unraid }}
     steps:
       - uses: actions/checkout@v4
       - id: b
-        run: echo "images=$(python3 tools/template.py branches my-enshrouded.xml)" >> "$GITHUB_OUTPUT"
+        run: |
+          images=$(python3 tools/template.py branches my-enshrouded.xml)
+          unraid=$(jq -c .targets .github/unraid.json)
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+          echo "unraid=$unraid" >> "$GITHUB_OUTPUT"
 
   image:
     # Every image the template offers must pull, and every variable the template sets must be
@@ -76,11 +81,31 @@ jobs:
             exit 1
           fi
 
-  steam:
+  unraid-release:
+    # Goes red when Unraid ships a release newer than a target in .github/unraid.json, or when a
+    # target's Docker version disagrees with the release notes. Update the file, then run smoke.
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/unraid_releases.py check .github/unraid.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+  steam:
+    # steamcmd on every tested Unraid's Docker Engine: cheap, and it's what broke on 29.4.2.
+    needs: branches
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.branches.outputs.unraid) }}
+    name: steam (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/unraid-docker
+        with:
+          version: ${{ matrix.docker }}
+          unraid: ${{ matrix.unraid }}
       - name: GAME_BRANCH exists on Steam
         run: |
           build=$(tests/steam_buildid.sh)

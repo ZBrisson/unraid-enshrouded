@@ -1,13 +1,16 @@
 name: Unraid's Docker
 description: >
-  Run the job's containers on the Docker Engine version Unraid ships, not the runner's.
+  Run the job's containers on the Docker Engine an Unraid release ships, not the runner's.
   The tests claim "works on Unraid"; the engine (and its default seccomp profile) is part of
-  that environment. Bump the version input's default with the README's "Tested on" table when Unraid's
-  Docker changes (on the server: docker version --format '{{.Server.Version}}').
+  that environment. The versions live in .github/unraid.json; ci / unraid-release checks
+  them against Unraid's release notes.
 inputs:
   version:
-    description: Unraid's Docker Engine version (29.8.2 on Unraid 7.3.4, read with docker version on the host 2026-11-24)
-    default: "29.8.2"
+    description: Docker Engine version, from a target in .github/unraid.json (e.g. 29.8.2)
+    required: true
+  unraid:
+    description: The Unraid release that ships it, for the job summary
+    required: true
 runs:
   using: composite
   steps:
@@ -19,10 +22,11 @@ runs:
       shell: bash
       env:
         WANT: ${{ inputs.version }}
+        UNRAID: ${{ inputs.unraid }}
       run: |
         got=$(docker version --format '{{.Server.Version}}')
-        echo "Docker Engine: $got (Unraid: $WANT)" | tee -a "$GITHUB_STEP_SUMMARY"
+        echo "Docker Engine: $got (Unraid $UNRAID ships $WANT)" | tee -a "$GITHUB_STEP_SUMMARY"
         if [[ $got != "$WANT" ]]; then
-          echo "::error::tests would run on Docker $got, not Unraid's $WANT"
+          echo "::error::tests would run on Docker $got, not Unraid $UNRAID's $WANT"
           exit 1
         fi
