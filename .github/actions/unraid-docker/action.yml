@@ -6,7 +6,7 @@ description: >
   Docker changes (on the server: docker version --format '{{.Server.Version}}').
 inputs:
   version:
-    description: Unraid's Docker Engine version (Unraid 7.3.2 ships 29.8.2)
+    description: Unraid's Docker Engine version (29.8.2 on Unraid 7.3.4, read with docker version on the host 2026-11-24)
     default: "29.8.2"
 runs:
   using: composite
